@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlgoTradeBolt - Trading Interface</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter for UI, Fira Code for terminals/data -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- TradingView Widget Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+    <style>
+        /* Use the imported fonts */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark blue hue */
+        }
+        .font-mono {
+            font-family: 'Fira Code', monospace;
+        }
+        
+        /* Custom scrollbar for terminal/log areas */
+        .terminal-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .terminal-scroll::-webkit-scrollbar-track {
+            background: #1c2128;
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb {
+            background-color: #484f58;
+            border-radius: 4px;
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb:hover {
+            background-color: #6e7681;
+        }
+
+        /* Blinking cursor for the terminal */
+        .cursor::after {
+            content: '█';
+            animation: blink 1s step-end infinite;
+            color: #34d399;
+        }
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+        
+        /* Helper to hide elements */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body class="text-gray-300 antialiased">
+
+    <div class="flex h-screen bg-[#010409]">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 flex-shrink-0 bg-[#0d1117] border-r border-slate-800 flex flex-col">
+            <div class="h-16 flex items-center justify-center border-b border-slate-800 px-4">
+                <i data-lucide="zap" class="text-emerald-400 mr-2"></i>
+                <h1 class="text-xl font-bold tracking-wider">AlgoTrade<span class="text-emerald-400">Bolt</span></h1>
+            </div>
+            <nav id="sidebar-nav" class="flex-1 px-4 py-6 space-y-2">
+                <a href="#" data-page="dashboard" class="nav-link flex items-center px-4 py-2 rounded-lg">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3"></i> Dashboard
+                </a>
+                <a href="#" data-page="live-trades" class="nav-link flex items-center px-4 py-2 rounded-lg">
+                    <i data-lucide="arrow-right-left" class="w-5 h-5 mr-3"></i> Live Trades
+                </a>
+                <a href="#" data-page="charts" class="nav-link flex items-center px-4 py-2 rounded-lg">
+                    <i data-lucide="candlestick-chart" class="w-5 h-5 mr-3"></i> Charts
+                </a>
+                <a href="#" data-page="backtesting" class="nav-link flex items-center px-4 py-2 rounded-lg">
+                    <i data-lucide="area-chart" class="w-5 h-5 mr-3"></i> Backtesting
+                </a>
+                <a href="#" data-page="trade-history" class="nav-link flex items-center px-4 py-2 rounded-lg">
+                     <i data-lucide="book-open" class="w-5 h-5 mr-3"></i> Trade History
+                </a>
+                 <a href="#" data-page="strategies" class="nav-link flex items-center px-4 py-2 rounded-lg">
+                    <i data-lucide="sliders-horizontal" class="w-5 h-5 mr-3"></i> Strategies
+                </a>
+                <a href="#" data-page="settings" class="nav-link flex items-center px-4 py-2 rounded-lg">
+                    <i data-lucide="settings" class="w-5 h-5 mr-3"></i> Settings
+                </a>
+            </nav>
+            <div class="px-4 py-4 border-t border-slate-800">
+                <p class="text-xs text-gray-500">Version 1.0.0</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Header -->
+            <header class="h-16 bg-[#0d1117]/80 backdrop-blur-sm border-b border-slate-800 flex items-center justify-between px-6 flex-shrink-0">
+                 <h2 id="page-title" class="text-xl font-semibold text-white">Dashboard</h2>
+                <div class="flex items-center space-x-4">
+                    <button class="px-4 py-2 bg-red-600/80 hover:bg-red-600 rounded-md font-semibold flex items-center space-x-2 transition-colors duration-200">
+                        <i data-lucide="square" class="w-4 h-4"></i>
+                        <span>STOP ALL BOTS</span>
+                    </button>
+                    <button class="px-4 py-2 bg-emerald-500/80 hover:bg-emerald-500 rounded-md font-semibold flex items-center space-x-2 transition-colors duration-200">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                        <span>START TRADING</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div id="content-area" class="flex-1 overflow-y-auto p-6">
+                <!-- Dashboard Page -->
+                <div id="page-dashboard" class="page-content space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-slate-900/70 border border-slate-800 rounded-lg p-5">
+                            <h3 class="font-semibold text-gray-400">Total P/L</h3>
+                            <p class="text-2xl font-bold mt-2 text-green-400">+$7,849.12</p>
+                        </div>
+                        <div class="bg-slate-900/70 border border-slate-800 rounded-lg p-5">
+                            <h3 class="font-semibold text-gray-400">24h Volume</h3>
+                            <p class="text-2xl font-bold mt-2">$125,320.50</p>
+                        </div>
+                        <div class="bg-slate-900/70 border border-slate-800 rounded-lg p-5">
+                            <h3 class="font-semibold text-gray-400">Win Rate</h3>
+                            <p class="text-2xl font-bold mt-2">78%</p>
+                        </div>
+                        <div class="bg-slate-900/70 border border-slate-800 rounded-lg p-5">
+                            <h3 class="font-semibold text-gray-400">Active Bots</h3>
+                            <p class="text-2xl font-bold mt-2">3 / 5</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden h-[50vh] flex flex-col">
+                        <div class="flex-shrink-0 bg-slate-800/50 px-4 py-2 border-b border-slate-700 text-sm font-medium text-gray-300">Live Trading Log</div>
+                        <div id="terminal" class="p-4 overflow-y-auto flex-1 font-mono text-sm terminal-scroll space-y-1"></div>
+                    </div>
+                </div>
+
+                <!-- Live Trades Page -->
+                <div id="page-live-trades" class="page-content hidden">
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-800 text-xs text-gray-400 uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-6 py-3">Pair</th>
+                                    <th class="px-6 py-3">Type</th>
+                                    <th class="px-6 py-3">Amount</th>
+                                    <th class="px-6 py-3">Entry Price</th>
+                                    <th class="px-6 py-3">Current Price</th>
+                                    <th class="px-6 py-3">P/L</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800">
+                                <tr class="hover:bg-slate-800/50">
+                                    <td class="px-6 py-4 font-medium">BTC/USDT</td>
+                                    <td class="px-6 py-4"><span class="text-green-400">LONG</span></td>
+                                    <td class="px-6 py-4">0.5 BTC</td>
+                                    <td class="px-6 py-4">$68,540.10</td>
+                                    <td class="px-6 py-4">$68,910.45</td>
+                                    <td class="px-6 py-4 text-green-400">+$185.17</td>
+                                </tr>
+                                <tr class="hover:bg-slate-800/50">
+                                    <td class="px-6 py-4 font-medium">ETH/USDT</td>
+                                    <td class="px-6 py-4"><span class="text-red-400">SHORT</span></td>
+                                    <td class="px-6 py-4">10 ETH</td>
+                                    <td class="px-6 py-4">$3,550.00</td>
+                                    <td class="px-6 py-4">$3,520.75</td>
+                                    <td class="px-6 py-4 text-green-400">+$292.50</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TradingView Charts Page -->
+                <div id="page-charts" class="page-content hidden h-[85vh]">
+                    <div id="tradingview-widget-container" class="w-full h-full"></div>
+                </div>
+
+                <!-- Backtesting Page -->
+                <div id="page-backtesting" class="page-content hidden space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold mb-4">Run Backtest</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <!-- Form inputs -->
+                            <div><label class="text-sm">Strategy</label><select class="w-full mt-1 bg-slate-800 border-slate-700 rounded-md p-2 focus:ring-emerald-500 focus:border-emerald-500"></select></div>
+                            <div><label class="text-sm">Pair</label><input type="text" value="BTC/USDT" class="w-full mt-1 bg-slate-800 border-slate-700 rounded-md p-2"></div>
+                            <div><label class="text-sm">Start Date</label><input type="date" class="w-full mt-1 bg-slate-800 border-slate-700 rounded-md p-2"></div>
+                            <div><label class="text-sm">End Date</label><input type="date" class="w-full mt-1 bg-slate-800 border-slate-700 rounded-md p-2"></div>
+                        </div>
+                        <button class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-md font-semibold">Run Test</button>
+                    </div>
+                     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold mb-4">Backtest Results</h3>
+                         <p class="text-gray-400">Results will be shown here...</p>
+                    </div>
+                </div>
+                
+                <!-- Trade History Page -->
+                <div id="page-trade-history" class="page-content hidden">
+                    <!-- Similar to live trades but with more data and pagination -->
+                     <div class="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-800 text-xs text-gray-400 uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-6 py-3">Pair</th><th class="px-6 py-3">Date</th><th class="px-6 py-3">Type</th><th class="px-6 py-3">Amount</th><th class="px-6 py-3">P/L ($)</th><th class="px-6 py-3">P/L (%)</th>
+                                </tr>
+                            </thead>
+                             <tbody class="divide-y divide-slate-800">
+                                 <!-- Mock data -->
+                                <tr class="hover:bg-slate-800/50"><td class="px-6 py-4">BTC/USDT</td><td class="px-6 py-4">2024-05-20</td><td class="px-6 py-4 text-green-400">LONG</td><td class="px-6 py-4">0.2</td><td class="px-6 py-4 text-green-400">+$250.43</td><td class="px-6 py-4 text-green-400">+1.8%</td></tr>
+                                <tr class="hover:bg-slate-800/50"><td class="px-6 py-4">SOL/USDT</td><td class="px-6 py-4">2024-05-19</td><td class="px-6 py-4 text-red-400">SHORT</td><td class="px-6 py-4">50</td><td class="px-6 py-4 text-red-400">-$80.10</td><td class="px-6 py-4 text-red-400">-0.9%</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Strategies Page -->
+                <div id="page-strategies" class="page-content hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                     <div class="bg-slate-900 border border-slate-800 rounded-lg p-5">
+                        <h3 class="text-lg font-semibold text-white">ScalperV2</h3>
+                        <p class="text-sm text-gray-400 mt-2">High-frequency scalping strategy using RSI and EMA crosses.</p>
+                        <div class="mt-4 space-x-2"><button class="btn-secondary">Edit</button><button class="btn-primary">Backtest</button></div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5">
+                        <h3 class="text-lg font-semibold text-white">MomentumSwing</h3>
+                        <p class="text-sm text-gray-400 mt-2">Mid-term swing trading based on MACD and volume indicators.</p>
+                         <div class="mt-4 space-x-2"><button class="btn-secondary">Edit</button><button class="btn-primary">Backtest</button></div>
+                    </div>
+                </div>
+
+                 <!-- Settings Page -->
+                <div id="page-settings" class="page-content hidden space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold mb-4">API Keys</h3>
+                        <div class="space-y-4">
+                            <div><label class="text-sm">Binance API Key</label><input type="password" value="************" class="w-full mt-1 bg-slate-800 border-slate-700 rounded-md p-2"></div>
+                            <div><label class="text-sm">Binance API Secret</label><input type="password" value="************" class="w-full mt-1 bg-slate-800 border-slate-700 rounded-md p-2"></div>
+                            <div><label class="text-sm">KuCoin API Key</label><input type="password" value="************" class="w-full mt-1 bg-slate-800 border-slate-700 rounded-md p-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- Elements ---
+            const sidebarNav = document.getElementById('sidebar-nav');
+            const navLinks = sidebarNav.querySelectorAll('.nav-link');
+            const contentArea = document.getElementById('content-area');
+            const pageContents = contentArea.querySelectorAll('.page-content');
+            const pageTitle = document.getElementById('page-title');
+
+            // --- App State ---
+            let currentPage = 'dashboard';
+
+            // --- Functions ---
+
+            /**
+             * Handles navigation between pages
+             * @param {string} pageId - The ID of the page to navigate to
+             */
+            function navigateTo(pageId) {
+                // Hide all page content
+                pageContents.forEach(content => content.classList.add('hidden'));
+
+                // Show the selected page
+                const targetPage = document.getElementById(`page-${pageId}`);
+                if (targetPage) {
+                    targetPage.classList.remove('hidden');
+                    currentPage = pageId;
+                    
+                    // Update header title
+                    const link = sidebarNav.querySelector(`[data-page="${pageId}"]`);
+                    pageTitle.textContent = link.textContent.trim();
+                    
+                    // Special handling for pages that need initialization
+                    if (pageId === 'charts') {
+                        loadTradingViewWidget();
+                    }
+
+                } else {
+                    console.error(`Page with ID 'page-${pageId}' not found.`);
+                }
+                
+                // Update active link style
+                updateActiveLink();
+            }
+
+            /**
+             * Updates the visual style of the active navigation link
+             */
+            function updateActiveLink() {
+                navLinks.forEach(link => {
+                    if (link.dataset.page === currentPage) {
+                        link.classList.add('bg-slate-800', 'text-white');
+                        link.classList.remove('text-gray-400', 'hover:bg-slate-700/50');
+                    } else {
+                        link.classList.remove('bg-slate-800', 'text-white');
+                        link.classList.add('text-gray-400', 'hover:bg-slate-700/50');
+                    }
+                });
+            }
+
+            /**
+             * Loads the TradingView widget. Only loads it once.
+             */
+            let isTradingViewLoaded = false;
+            function loadTradingViewWidget() {
+                if (isTradingViewLoaded || !document.getElementById('tradingview-widget-container')) return;
+                
+                new TradingView.widget({
+                    "autosize": true,
+                    "symbol": "BINANCE:BTCUSDT",
+                    "interval": "D",
+                    "timezone": "Etc/UTC",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "toolbar_bg": "#f1f3f6",
+                    "enable_publishing": false,
+                    "withdateranges": true,
+                    "hide_side_toolbar": false,
+                    "allow_symbol_change": true,
+                    "container_id": "tradingview-widget-container"
+                });
+                isTradingViewLoaded = true;
+            }
+
+            // --- Event Listeners ---
+            sidebarNav.addEventListener('click', function(e) {
+                const link = e.target.closest('.nav-link');
+                if (link && link.dataset.page) {
+                    e.preventDefault();
+                    navigateTo(link.dataset.page);
+                }
+            });
+
+            // --- Initial Setup ---
+            function init() {
+                // Render Lucide icons
+                lucide.createIcons();
+                
+                // Set initial page
+                navigateTo('dashboard');
+                
+                // Initialize mock terminal log on dashboard
+                setupMockTerminal();
+            }
+
+            // --- Mock Terminal Log Generator (for Dashboard) ---
+            function setupMockTerminal() {
+                const terminal = document.getElementById('terminal');
+                if(!terminal) return;
+
+                const logLevels = { INFO: 'text-blue-400', SUCCESS: 'text-green-400', WARN: 'text-yellow-400', ERROR: 'text-red-400', DEBUG: 'text-gray-500' };
+                const mockLogs = [
+                    { level: 'INFO', message: 'Initializing AlgoTradeBolt v1.0.0...' },
+                    { level: 'SUCCESS', message: 'Connection to services established.' },
+                    { level: 'INFO', message: 'Loading strategy: "ScalperV2" for BTC/USDT.' },
+                    { level: 'INFO', message: 'Starting trading bot "BTC-Scalper-01".' },
+                    { level: 'DEBUG', message: 'Current price: $68,543.21, RSI(14): 48.2' },
+                    { level: 'SUCCESS', message: 'Placed BUY order: 0.5 BTC @ $68,540.10' },
+                ];
+                let logIndex = 0;
+
+                const addLogEntry = () => {
+                    if (logIndex < mockLogs.length) {
+                        const log = mockLogs[logIndex++];
+                        const logElement = document.createElement('div');
+                        logElement.innerHTML = `<span class="text-gray-600">${new Date().toLocaleTimeString()}</span> <span class="${logLevels[log.level]} font-bold mx-2">[${log.level}]</span> <span>${log.message}</span>`;
+                        terminal.appendChild(logElement);
+                        terminal.scrollTop = terminal.scrollHeight;
+                    }
+                };
+
+                mockLogs.forEach((_, i) => setTimeout(addLogEntry, i * 300));
+                setInterval(() => {
+                     const logElement = document.createElement('div');
+                     logElement.innerHTML = `<span class="text-gray-600">${new Date().toLocaleTimeString()}</span> <span class="${logLevels.DEBUG} font-bold mx-2">[DEBUG]</span> <span>Heartbeat... Price: $${(68500 + Math.random() * 100).toFixed(2)}</span>`;
+                     terminal.appendChild(logElement);
+                     terminal.scrollTop = terminal.scrollHeight;
+                }, 5000);
+            }
+            
+            // --- Run Application ---
+            init();
+        });
+    </script>
+
+</body>
+</html>
