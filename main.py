@@ -6,110 +6,130 @@
 # 1. Make sure you have 'config.py' with your API keys in the same directory.
 #
 # 2. Install the required libraries:
-#    pip install Flask flask-cors ccxt
+#    pip install Flask flask-cors ccxt termcolor
 #
 # 3. Run this script from your terminal:
 #    python main.py
 #
-# 4. The server will start, and your web interface can now fetch data from it.
+# 4. The server will start on port 5000.
 # --------------------
 
 from flask import Flask, jsonify
 from flask_cors import CORS
+from termcolor import colored
 import ccxt
 import sys
+import datetime
 
 # --- Configuration and Initialization ---
-
-# Initialize the Flask app
 app = Flask(__name__)
-
-# Enable Cross-Origin Resource Sharing (CORS) to allow the frontend
-# to make requests to this server.
 CORS(app)
 
-# Attempt to import the API key configuration
 try:
     import config
 except ImportError:
-    print("[ERROR] Configuration file 'config.py' not found.")
-    print("Please create 'config.py' and add your API credentials before running the server.")
+    print(colored("[ERROR] Configuration file 'config.py' not found.", 'red'))
+    print(colored("Please create 'config.py' and add your API credentials.", 'yellow'))
     sys.exit(1)
-
 
 # --- Helper Function for Exchange Connection ---
 
-def get_exchange_balances(exchange_id, api_credentials):
+def get_exchange_data(exchange_id, api_credentials):
     """
-    Connects to a single exchange and fetches its non-zero balances.
-    Returns a dictionary of balances or an error message.
+    Connects to a single exchange and fetches its non-zero balances,
+    including USD prices and values for each asset.
     """
     exchange_name = exchange_id.capitalize()
-    print(f"Attempting to connect to {exchange_name}...")
+    print(colored(f"\n----- [CONNECTING TO: {exchange_name}] -----", 'yellow'))
     
     try:
+        # Initialize CCXT exchange class and fetch balance
+        print(f"[{datetime.datetime.now()}] Initializing and fetching balance for {exchange_name}...")
         exchange_class = getattr(ccxt, exchange_id)
         exchange = exchange_class(api_credentials)
         balance = exchange.fetch_balance()
         
-        non_zero_balances = {
-            currency: total
-            for currency, total in balance['total'].items()
-            if total > 0
+        print(colored(f"✅ [{datetime.datetime.now()}] {exchange_name}: Connection successful.", 'green'))
+        
+        non_zero_balances = {k: v for k, v in balance['total'].items() if v > 0}
+        
+        assets_with_details = {}
+        total_portfolio_value_usd = 0
+        
+        print(f"[{datetime.datetime.now()}] Fetching market prices for {len(non_zero_balances)} asset(s)...")
+
+        for currency, total in non_zero_balances.items():
+            details = {'total': total, 'price_usd': 1.0, 'value_usd': total}
+            
+            # For non-stablecoins, try to fetch the price against USDT
+            if currency not in ['USDT', 'USDC', 'BUSD', 'TUSD', 'DAI']:
+                try:
+                    ticker = exchange.fetch_ticker(f'{currency}/USDT')
+                    details['price_usd'] = ticker['last']
+                    details['value_usd'] = total * ticker['last']
+                except Exception:
+                    # If direct USDT pair doesn't exist, can't determine price
+                    details['price_usd'] = 0
+                    details['value_usd'] = 0
+                    print(colored(f"Could not fetch USDT price for {currency} on {exchange_name}.", 'magenta'))
+
+            assets_with_details[currency] = details
+            total_portfolio_value_usd += details['value_usd']
+
+        print(colored(f"✅ [{datetime.datetime.now()}] {exchange_name}: Data processing complete.", 'green'))
+        
+        return {
+            "assets": assets_with_details,
+            "total_value_usd": total_portfolio_value_usd
         }
-        print(f"Successfully fetched balances from {exchange_name}.")
-        return non_zero_balances
 
     except ccxt.AuthenticationError as e:
-        error_msg = f"Authentication Error with {exchange_name}: {e}"
-        print(f"[ERROR] {error_msg}")
+        error_msg = f"Authentication Error with {exchange_name}. Check API credentials in config.py."
+        print(colored(f"❌ [{datetime.datetime.now()}] {error_msg}", 'red'))
         return {"error": error_msg}
     except Exception as e:
-        error_msg = f"An unexpected error occurred with {exchange_name}: {e}"
-        print(f"[ERROR] {error_msg}")
+        error_msg = f"An unexpected error occurred with {exchange_name}."
+        print(colored(f"❌ [{datetime.datetime.now()}] {error_msg}\n   Details: {e}", 'red'))
         return {"error": error_msg}
 
-
 # --- API Endpoints ---
-# These are the URLs that the frontend will call to get data.
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    """A simple endpoint to check if the backend server is running."""
     return jsonify({"status": "ok", "message": "Backend is running."})
 
-@app.route('/api/balances', methods=['GET'])
-def get_all_balances():
+@app.route('/api/dashboard_data', methods=['GET'])
+def get_dashboard_data():
     """
-    The main endpoint to fetch balances from all configured exchanges.
-    The frontend will call this URL.
+    Main endpoint to fetch all data required for the dashboard.
+    For now, it treats each exchange as a single portfolio.
     """
-    print("\nReceived request for /api/balances")
-    all_balances = {}
-
-    # Fetch from Binance if keys are present in config
-    if hasattr(config, 'BINANCE_API_KEY') and config.BINANCE_API_KEY != 'YOUR_BINANCE_API_KEY':
-        binance_creds = {'apiKey': config.BINANCE_API_KEY, 'secret': config.BINANCE_API_SECRET}
-        all_balances['binance'] = get_exchange_balances('binance', binance_creds)
+    print("\n" + colored("="*50, 'blue'))
+    print(colored(f"[{datetime.datetime.now()}] Received request for /api/dashboard_data", 'cyan'))
+    print(colored("="*50, 'blue'))
     
-    # Fetch from KuCoin if keys are present in config
-    if hasattr(config, 'KUCOIN_API_KEY') and config.KUCOIN_API_KEY != 'YOUR_KUCOIN_API_KEY':
-        kucoin_creds = {
-            'apiKey': config.KUCOIN_API_KEY,
-            'secret': config.KUCOIN_API_SECRET,
-            'password': config.KUCOIN_API_PASSPHRASE
-        }
-        all_balances['kucoin'] = get_exchange_balances('kucoin', kucoin_creds)
+    dashboard_data = {}
 
-    # Return the combined data to the frontend as JSON
-    return jsonify(all_balances)
+    # Fetch from Binance if keys are present
+    if hasattr(config, 'BINANCE_API_KEY') and config.BINANCE_API_KEY and 'YOUR_BINANCE_API_KEY' not in config.BINANCE_API_KEY:
+        binance_creds = {'apiKey': config.BINANCE_API_KEY, 'secret': config.BINANCE_API_SECRET}
+        dashboard_data['Binance - Main Account'] = get_exchange_data('binance', binance_creds)
+    
+    # Fetch from KuCoin if keys are present
+    if hasattr(config, 'KUCOIN_API_KEY') and config.KUCOIN_API_KEY and 'YOUR_KUCOIN_API_KEY' not in config.KUCOIN_API_KEY:
+        kucoin_creds = {'apiKey': config.KUCOIN_API_KEY, 'secret': config.KUCOIN_API_SECRET, 'password': config.KUCOIN_API_PASSPHRASE}
+        dashboard_data['KuCoin - Main Account'] = get_exchange_data('kucoin', kucoin_creds)
 
+    print("\n" + colored("="*50, 'blue'))
+    print(colored(f"[{datetime.datetime.now()}] Finished processing dashboard data request.", 'cyan'))
+    print(colored("="*50, 'blue'))
+    
+    return jsonify(dashboard_data)
 
 # --- Main execution block ---
 
 if __name__ == '__main__':
-    # Starts the Flask web server.
-    # It will be accessible at http://127.0.0.1:5000
-    # The `debug=True` argument enables auto-reloading when you save the file.
-    print("Starting AlgoTradeBolt backend server...")
+    print(colored("="*50, 'magenta'))
+    print(colored("   Starting AlgoTradeBolt Backend Server", 'magenta'))
+    print(colored("="*50, 'magenta'))
     app.run(host='0.0.0.0', port=5000, debug=True)

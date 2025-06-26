@@ -53,7 +53,7 @@
                 <a href="#" data-page="settings" class="nav-link flex items-center px-4 py-2 rounded-lg"><i data-lucide="settings" class="w-5 h-5 mr-3"></i> Settings</a>
             </nav>
             <div class="px-4 py-4 border-t border-slate-800">
-                <p class="text-xs text-gray-500">Version 2.0.0 (Live Frontend)</p>
+                <p class="text-xs text-gray-500">Version 2.1.2 (Live Frontend)</p>
             </div>
         </aside>
 
@@ -87,7 +87,7 @@
                 <div id="page-live-trades" class="page-content hidden"><div class="backend-required-placeholder"></div></div>
                 <div id="page-trade-history" class="page-content hidden"><div class="backend-required-placeholder"></div></div>
                 
-                <!-- Backtesting, Strategy, Settings, Charts Pages... (content is the same as previous versions) -->
+                <!-- Backtesting Page -->
                  <div id="page-backtesting" class="page-content hidden space-y-6">
                     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6">
                         <h3 class="text-lg font-semibold mb-4">Run Backtest</h3>
@@ -112,6 +112,8 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Strategy Tester Page -->
                 <div id="page-strategies" class="page-content hidden grid grid-cols-1 gap-6">
                      <div class="bg-slate-900 border-2 border-dashed border-emerald-700/50 rounded-lg p-6">
                         <h3 class="text-lg font-semibold text-white flex items-center">
@@ -130,11 +132,13 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Settings Page -->
                 <div id="page-settings" class="page-content hidden space-y-6">
                      <div class="bg-slate-900 border border-slate-800 rounded-lg p-6">
                         <h3 class="text-lg font-semibold mb-2 flex items-center"><i data-lucide="server" class="w-5 h-5 mr-3"></i>Backend Server Configuration</h3>
                         <p class="text-sm text-slate-400 mt-4 mb-6">
-                            This web interface is the **frontend**. To connect to exchanges, it communicates with the **backend** Python server (`main.py`).
+                            This web interface is the **frontend**. To connect to exchanges for live data (Portfolio, Trades), it communicates with the **backend** Python server (`main.py`).
                         </p>
                         <div class="text-sm text-slate-300 space-y-2">
                            <p><strong>1. Configure Keys:</strong> Add your API credentials to the `config.py` file on your server.</p>
@@ -143,6 +147,8 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Charts Page -->
                 <div id="page-charts" class="page-content hidden h-[85vh]"><div id="tradingview-widget-container" class="w-full h-full"></div></div>
 
             </div>
@@ -157,13 +163,16 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // --- Configuration ---
-            const BACKEND_URL = 'http://127.0.0.1:5000';
+            const BACKEND_URL = 'http://34.143.158.142:5000';
 
             // --- Global Elements ---
             const pageTitle = document.getElementById('page-title');
             const terminal = document.getElementById('terminal');
             const backendStatusEl = document.getElementById('backend-status');
             const portfolioPage = document.getElementById('page-portfolio');
+            const contentArea = document.getElementById('content-area');
+            const modal = document.getElementById('modal');
+            const modalContent = document.getElementById('modal-content');
 
             // --- Logging ---
             const logLevels = { INFO: 'text-blue-400', WARN: 'text-yellow-400', ERROR: 'text-red-400', SUCCESS: 'text-green-400' };
@@ -175,13 +184,75 @@
                 terminal.scrollTop = terminal.scrollHeight;
             };
 
+            // --- Modal Controls ---
+            const showModal = (htmlContent) => { modalContent.innerHTML = htmlContent; modal.classList.remove('hidden'); };
+            const hideModal = () => modal.classList.add('hidden');
+            const showLoadingModal = (text = 'Thinking...') => showModal(`<div class="spinner"></div><p class="mt-4 text-lg font-semibold">${text}</p>`);
+
+            // --- Gemini API Call ---
+            async function callGeminiAPI(prompt) {
+                showLoadingModal('Contacting Gemini...');
+                const apiKey = ""; // API key is handled by the environment
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+                try {
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) {
+                        const errorBody = await response.json();
+                        throw new Error(`API Error: ${errorBody.error?.message || 'Unknown error'}`);
+                    }
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        hideModal();
+                        return result.candidates[0].content.parts[0].text;
+                    } else { throw new Error("Invalid response structure from Gemini API."); }
+                } catch (error) {
+                    console.error("Gemini API call failed:", error);
+                    showModal(`<p class="text-red-400 font-bold">Error:</p><p class="text-sm mt-2">${error.message}</p><button onclick="document.getElementById('modal').classList.add('hidden')" class="mt-4 px-4 py-2 bg-slate-600 rounded-md">Close</button>`);
+                    return null;
+                }
+            }
+            
+            // --- Handlers for AI and Backtesting Features ---
+            async function handleGenerateStrategy() {
+                const strategyPrompt = document.getElementById('strategy-prompt');
+                const userPrompt = strategyPrompt.value.trim();
+                if (!userPrompt) return;
+                
+                const fullPrompt = `You are a quantitative trading strategy expert. Based on the user's idea, create a structured strategy outline using markdown. Sections must include: Strategy Name, Concept, Indicators, Entry Conditions (Long/Short), Exit Conditions, and Risk Management. User's Idea: "${userPrompt}"`;
+                const result = await callGeminiAPI(fullPrompt);
+                
+                if (result) {
+                    document.getElementById('strategy-output').innerHTML = result; 
+                    document.getElementById('strategy-output-container').classList.remove('hidden');
+                }
+            }
+
+            function handleRunBacktest() {
+                const backtestResultsSummary = document.getElementById('backtest-results-summary');
+                const backtestResultsCard = document.getElementById('backtest-results-card');
+                const mockResults = { 'Net Profit': '<span class="text-green-400">+$2,105.50</span>', 'Total Trades': '78', 'Win Rate': '<span class="text-green-400">65%</span>', 'Max Drawdown': '<span class="text-red-400">-8.2%</span>' };
+                backtestResultsSummary.innerHTML = Object.entries(mockResults).map(([key, value]) => `<div><p class="text-gray-400">${key}</p><p class="font-bold text-lg">${value}</p></div>`).join('');
+                backtestResultsCard.classList.remove('hidden');
+                document.getElementById('backtest-analysis-container').classList.add('hidden');
+            }
+            
+            async function handleAnalyzeBacktest() {
+                const resultsText = document.getElementById('backtest-results-summary').innerText;
+                const analysisPrompt = `You are an expert trading analyst. Analyze these backtest results. Provide a concise markdown analysis covering: 1. Overall performance. 2. Strengths. 3. Weaknesses. 4. Actionable suggestions for improvement. Results:\n${resultsText}`;
+                const result = await callGeminiAPI(analysisPrompt);
+                if (result) {
+                    document.getElementById('backtest-analysis-output').innerHTML = result;
+                    document.getElementById('backtest-analysis-container').classList.remove('hidden');
+                }
+            }
+
             // --- Backend Communication ---
             async function checkBackendStatus() {
                 try {
                     const response = await fetch(`${BACKEND_URL}/api/status`);
                     if (!response.ok) throw new Error('Backend not responding');
                     const data = await response.json();
-                    
                     if (data.status === 'ok') {
                         backendStatusEl.innerHTML = `<i data-lucide="server" class="text-green-400"></i><span class="text-green-400">Backend Connected</span>`;
                         lucide.createIcons({ nodes: [backendStatusEl.querySelector('i')] });
@@ -189,26 +260,22 @@
                 } catch (error) {
                     backendStatusEl.innerHTML = `<i data-lucide="server-off" class="text-red-400"></i><span class="text-red-400">Backend Disconnected</span>`;
                     lucide.createIcons({ nodes: [backendStatusEl.querySelector('i')] });
-                    logToTerminal('Could not connect to the backend server. Is it running?', 'ERROR');
+                    logToTerminal('Could not connect to the backend server. Is it running? Is the firewall port 5000 open?', 'ERROR');
                 }
             }
 
             async function loadPortfolioData() {
                 logToTerminal('Requesting portfolio data from backend...', 'INFO');
                 portfolioPage.innerHTML = `<div class="flex justify-center items-center p-10"><div class="spinner"></div></div>`;
-                
                 try {
                      const response = await fetch(`${BACKEND_URL}/api/balances`);
                      const data = await response.json();
                      logToTerminal('Portfolio data received.', 'SUCCESS');
-
                      portfolioPage.innerHTML = ''; // Clear spinner
-
                      for (const exchangeId in data) {
                         const exchangeData = data[exchangeId];
                         const tableWrapper = document.createElement('div');
                         tableWrapper.className = 'bg-slate-900 border border-slate-800 rounded-lg overflow-hidden mb-6';
-
                         let tableRows = '';
                         if (exchangeData.error) {
                             tableRows = `<tr><td colspan="2" class="px-6 py-4 text-red-400">${exchangeData.error}</td></tr>`;
@@ -218,11 +285,9 @@
                             tableRows = Object.entries(exchangeData).map(([asset, amount]) => `
                                 <tr class="hover:bg-slate-800/50">
                                     <td class="px-6 py-4 font-medium">${asset}</td>
-                                    <td class="px-6 py-4 font-mono">${amount.toFixed(8)}</td>
-                                </tr>
-                            `).join('');
+                                    <td class="px-6 py-4 font-mono">${(typeof amount === 'number' ? amount.toFixed(8) : amount)}</td>
+                                </tr>`).join('');
                         }
-                        
                         tableWrapper.innerHTML = `
                             <h3 class="p-4 text-lg font-semibold capitalize bg-slate-800/50">${exchangeId} Balances</h3>
                             <table class="w-full text-sm text-left">
@@ -247,7 +312,7 @@
                 const targetPage = document.getElementById(`page-${pageId}`);
                 if (targetPage) {
                     targetPage.classList.remove('hidden');
-                    if(pageId === 'portfolio' && !targetPage.hasChildNodes()) {
+                    if(pageId === 'portfolio' && targetPage.innerHTML.trim() === '') {
                         loadPortfolioData();
                     }
                     currentPage = pageId;
@@ -267,7 +332,10 @@
             let isTradingViewLoaded = false;
             const loadTradingViewWidget = () => {
                 const container = document.getElementById('tradingview-widget-container');
-                if (isTradingViewLoaded || !container) return;
+                if (!container) return;
+                // Don't re-initialize if it's already loaded
+                if (container.querySelector('iframe')) return;
+                
                 container.innerHTML = '';
                 new TradingView.widget({ "autosize": true, "symbol": "BINANCE:BTCUSDT", "interval": "240", "theme": "dark", "style": "1", "container_id": "tradingview-widget-container", "allow_symbol_change": true });
                 isTradingViewLoaded = true;
@@ -284,24 +352,43 @@
                 });
             }
 
+            // --- Global Event Listeners ---
+            document.getElementById('sidebar-nav').addEventListener('click', e => {
+                const link = e.target.closest('.nav-link');
+                if (link?.dataset?.page) { 
+                    e.preventDefault(); 
+                    navigateTo(link.dataset.page); 
+                }
+            });
+
+            contentArea.addEventListener('click', (e) => {
+                const target = e.target.closest('button');
+                if (!target) return;
+
+                switch(target.id) {
+                    case 'generate-strategy-btn':
+                        handleGenerateStrategy();
+                        break;
+                    case 'run-backtest-btn':
+                        handleRunBacktest();
+                        break;
+                    case 'analyze-backtest-btn':
+                        handleAnalyzeBacktest();
+                        break;
+                }
+            });
+
+            // --- Initializer ---
             const init = () => {
                 lucide.createIcons();
                 initPlaceholders();
                 logToTerminal('Frontend initialized. Attempting to connect to backend...', 'INFO');
+                logToTerminal(`Targeting backend at: ${BACKEND_URL}`, 'INFO');
                 checkBackendStatus();
                 setInterval(checkBackendStatus, 15000); // Check status every 15 seconds
                 navigateTo('dashboard');
             };
             
-            document.getElementById('sidebar-nav').addEventListener('click', e => {
-                const link = e.target.closest('.nav-link');
-                if (link) { e.preventDefault(); navigateTo(link.dataset.page); }
-            });
-
-            // AI Features logic (unchanged from previous version)
-            const generateStrategyBtn = document.getElementById('generate-strategy-btn'); //... etc.
-            // (Add back the full AI feature JS here to keep it functional)
-
             init();
         });
     </script>
